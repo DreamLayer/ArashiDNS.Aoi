@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -21,40 +22,38 @@ namespace Arashi.Azure
 {
     public class Startup
     {
+        private static ILoggerFactory LoggerFactory;
         private static string SetupBasePath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
         private static string IndexStr = File.Exists(SetupBasePath + "index.html")
             ? File.ReadAllText(SetupBasePath + "index.html")
-            : "Welcome to ArashiDNS.P ONE Azure";
+            : "Welcome to ArashiDNS.P ONE.Aoi Azure";
 
         public void ConfigureServices(IServiceCollection services)
         {
             DnsEncoder.Init();
         }
 
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, ILoggerFactory loggerFactory)
         {
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-
-            app.UseRouting();
-
-            app.UseEndpoints(endpoints =>
+            if (loggerFactory != null) LoggerFactory = loggerFactory;
+            if (env.IsDevelopment()) app.UseDeveloperExceptionPage();
+            app.UseRouting().UseEndpoints(endpoints =>
             {
                 endpoints.MapGet("/", async context =>
                 {
                     context.Response.ContentType = "text/html";
                     await context.Response.WriteAsync(IndexStr);
                 });
-            }).UseEndpoints(DnsQueryRoute).UseEndpoints(GeoIPRoute);
+            }).UseEndpoints(DnsQueryRoute);
+            if (Config.UseIpRoute) app.UseEndpoints(GeoIPRoute);
+            if (Config.UseCacheRoute) app.UseEndpoints(CacheRoute);
         }
 
         private static void DnsQueryRoute(IEndpointRouteBuilder endpoints)
         {
-            endpoints.Map("/dns-query", async context =>
+            endpoints.Map(Config.QueryPerfix, async context =>
             {
-                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE");
+                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE.Aoi");
                 var queryDictionary = context.Request.Query;
                 if (queryDictionary.ContainsKey("dns"))
                     ReturnContext(context, true,
@@ -67,18 +66,28 @@ namespace Arashi.Azure
                     await context.Response.WriteAsync(IndexStr);
                 }
             });
-            endpoints.Map("/ls-cache", async context =>
+        }
+
+        private static void CacheRoute(IEndpointRouteBuilder endpoints)
+        {
+            endpoints.Map(Config.CachePerfix + "/ls", async context =>
             {
-                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE");
+                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE.Aoi");
                 context.Response.ContentType = "text/plain";
                 await context.Response.WriteAsync(MemoryCache.Default.Aggregate(string.Empty,
                     (current, item) =>
-                        current + $"{item.Key.ToUpper()}:{((List<DnsRecordBase>) item.Value).FirstOrDefault()}" +
+                        current + $"{item.Key.ToUpper()}:{((List<DnsRecordBase>)item.Value).FirstOrDefault()}" +
                         Environment.NewLine));
             });
-            endpoints.Map("/rm-cache", async context =>
+            endpoints.Map(Config.CachePerfix + "/cnlist", async context =>
             {
-                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE");
+                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE.Aoi");
+                context.Response.ContentType = "text/plain";
+                await context.Response.WriteAsync(string.Join(Environment.NewLine, DNSChina.ChinaList));
+            });
+            endpoints.Map(Config.CachePerfix + "/rm", async context =>
+            {
+                context.Response.Headers.Add("X-Powered-By", "ArashiDNSP/ONE.Aoi");
                 context.Response.ContentType = "text/plain";
                 MemoryCache.Default.Trim(100);
                 await context.Response.WriteAsync("OK");
@@ -128,15 +137,21 @@ namespace Arashi.Azure
 
         private static void GeoIPRoute(IEndpointRouteBuilder endpoints)
         {
-            endpoints.Map("/ip", async context =>
+            endpoints.Map(Config.IpPerfix, async context =>
             {
                 context.Response.ContentType = "text/plain";
                 await context.Response.WriteAsync(RealIP.Get(context).ToString());
             });
-            endpoints.Map("/ip/source", async context =>
+            endpoints.Map(Config.IpPerfix + "/source", async context =>
             {
-                var jObject = new JObject {{"IP", RealIP.Get(context)}, {"UserHostAddress",
-                    context.Connection.RemoteIpAddress.ToString()}};
+                var jObject = new JObject
+                {
+                    {"IP", RealIP.Get(context)},
+                    {
+                        "UserHostAddress",
+                        context.Connection.RemoteIpAddress.ToString()
+                    }
+                };
                 if (context.Request.Headers.ContainsKey("X-Forwarded-For"))
                     jObject.Add("X-Forwarded-For", context.Request.Headers["X-Forwarded-For"].ToString());
                 if (context.Request.Headers.ContainsKey("CF-Connecting-IP"))
@@ -146,7 +161,7 @@ namespace Arashi.Azure
                 context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync(jObject.ToString());
             });
-            endpoints.Map("/ip/json", async context =>
+            endpoints.Map(Config.IpPerfix + "/json", async context =>
             {
                 var jObject = new JObject();
                 var asnCity = GeoIP.GetAsnCityValueTuple(context.Request.Query.ContainsKey("ip")
@@ -177,11 +192,15 @@ namespace Arashi.Azure
         {
             try
             {
-                if (context != null && DnsCache.Contains(dnsMessage, context))
-                    return DnsCache.Get(dnsMessage, context);
-                else if (DnsCache.Contains(dnsMessage)) return DnsCache.Get(dnsMessage);
-                
-                if (DNSChina.IsChinaName(dnsMessage.Questions.FirstOrDefault().Name))
+                if (Config.CacheEnable)
+                {
+                    if (context != null && Config.GeoCacheEnable && DnsCache.Contains(dnsMessage, context))
+                        return DnsCache.Get(dnsMessage, context);
+                    if (DnsCache.Contains(dnsMessage)) return DnsCache.Get(dnsMessage);
+                }
+
+                if (Config.ChinaListEnable && DNSChina.IsChinaName(dnsMessage.Questions.FirstOrDefault().Name) &&
+                    dnsMessage.Questions.FirstOrDefault().RecordType == RecordType.A)
                     return DNSChina.ResolveOverHttpDns(dnsMessage);
             }
             catch (Exception e)
@@ -189,29 +208,50 @@ namespace Arashi.Azure
                 Console.WriteLine(e);
             }
 
-            return DnsQuery(IPAddress.Parse("8.8.8.8"), dnsMessage);
+            return DnsQuery(Config.UpStream, dnsMessage);
         }
 
         public static DnsMessage DnsQuery(IPAddress ipAddress, DnsMessage dnsMessage)
         {
-            var client = new DnsClient(ipAddress, 500);
-            for (var i = 0; i < 3; i++)
+            var client = new DnsClient(ipAddress, Config.TimeOut)
+                {IsUdpEnabled = !Config.OnlyTcpEnable, IsTcpEnabled = true};
+            for (var i = 0; i < Config.Tries; i++)
             {
                 var aMessage = client.SendMessage(dnsMessage);
                 if (aMessage != null) return aMessage;
             }
 
-            return new DnsClient(ipAddress, 500)
+            return new DnsClient(ipAddress, Config.TimeOut)
                 {IsTcpEnabled = true, IsUdpEnabled = false}.SendMessage(dnsMessage);
         }
 
         public static void WriteLogCache(DnsMessage dnsMessage, HttpContext context = null)
         {
-            Task.Run(() =>
-            {
-                if (context != null) DnsCache.Add(dnsMessage, context);
-                else DnsCache.Add(dnsMessage);
-            });
+            if (Config.CacheEnable)
+                Task.Run(() =>
+                {
+                    if (context != null && Config.GeoCacheEnable) DnsCache.Add(dnsMessage, context);
+                    else DnsCache.Add(dnsMessage);
+                });
+
+            if (Config.LogEnable)
+                Task.Run(() =>
+                {
+                    var ip = RealIP.GetFromDns(dnsMessage, context);
+                    if (LoggerFactory != null && Config.FullLogEnable)
+                    {
+                        var logger = LoggerFactory.CreateLogger("Arashi.Aoi");
+                        dnsMessage.Questions.ForEach(o => logger.LogInformation(ip + ":Question:" + o));
+                        dnsMessage.AnswerRecords.ForEach(o => logger.LogInformation(ip + ":Answer:" + o));
+                        dnsMessage.AuthorityRecords.ForEach(o => logger.LogInformation(ip + ":Authority:" + o));
+                    }
+                    else
+                    {
+                        dnsMessage.Questions.ForEach(o => Console.WriteLine(ip + ":Question:" + o));
+                        dnsMessage.AnswerRecords.ForEach(o => Console.WriteLine(ip + ":Answer:" + o));
+                        dnsMessage.AuthorityRecords.ForEach(o => Console.WriteLine(ip + ":Authority:" + o));
+                    }
+                });
         }
     }
 }
