@@ -3,7 +3,7 @@ using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using Arashi.Azure;
-using LettuceEncrypt;
+
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -19,32 +19,33 @@ namespace Arashi.Aoi
             var cmd = new CommandLineApplication
                 {Name = "Arashi.Aoi", Description = "ArashiDNS.Aoi - Simple Lightweight DNS over HTTPS Server"};
             cmd.HelpOption("-?|-h|--help");
-            var ipOption = cmd.Option<string>("-l|--listen <IPEndPoint>", "Set listen ip address and port <127.0.0.1:2020>",
+            var ipOption = cmd.Option<string>("-l|--listen <IPEndPoint>", "Set the server listening address and port <127.0.0.1:2020>",
                 CommandOptionType.SingleValue);
-            var upOption = cmd.Option<string>("-u|--upstream <IPAddress>", "Set upstream ip address <8.8.8.8>",
+            var upOption = cmd.Option<string>("-u|--upstream <IPAddress>", "Set the upstream origin DNS server IP address <8.8.8.8>",
                 CommandOptionType.SingleValue);
-            var timeoutOption = cmd.Option<int>("-t|--timeout <Timeout(ms)>", "Set upstream query timeout <500>",
+            var timeoutOption = cmd.Option<int>("-t|--timeout <Timeout(ms)>", "Set timeout for query to the upstream DNS server <500>",
                 CommandOptionType.SingleValue);
-            var perfixOption = cmd.Option<string>("-p|--perfix <PerfixString>", "Set https query perfix </dns-query>",
+            var perfixOption = cmd.Option<string>("-p|--perfix <PerfixString>", "Set your DNS over HTTPS server query prefix </dns-query>",
                 CommandOptionType.SingleValue);
 
-            var cacheOption = cmd.Option("-c|--cache:<Type>", "Set enable caching [full/flexible/none]", CommandOptionType.SingleOrNoValue);
-            var logOption = cmd.Option("--log:<Type>", "Set enable log [full/dns/none]", CommandOptionType.SingleOrNoValue);
+            var cacheOption = cmd.Option("-c|--cache:<Type>", "Local query cache settings [full/flexible/none]", CommandOptionType.SingleOrNoValue);
+            var logOption = cmd.Option("--log:<Type>", "Console log output settings [full/dns/none]", CommandOptionType.SingleOrNoValue);
             var chinaListOption = cmd.Option("--chinalist", "Set enable ChinaList", CommandOptionType.NoValue);
-            var tcpOption = cmd.Option("--tcp", "Set enable only TCP query", CommandOptionType.NoValue);
+            var tcpOption = cmd.Option("--tcp", "Set enable upstream DNS query using TCP only", CommandOptionType.NoValue);
             var httpsOption = cmd.Option("-s|--https", "Set enable HTTPS", CommandOptionType.NoValue);
-            var pfxOption = cmd.Option<string>("-pfx|--pfxfile <FilePath>", "Set pfx file path <./cert.pfx>[@<password>]",
-                CommandOptionType.SingleValue);
-            var letsencryptOption = cmd.Option<string>("-let|--letsencrypt <ApplyString>", "Apply LetsEncrypt <domain.name>:<you@your.email>",
+            var pfxOption = cmd.Option<string>("-pfx|--pfxfile <FilePath>", "Set your pfx certificate file path <./cert.pfx>[@<password>]",
                 CommandOptionType.SingleValue);
             var syncmmdbOption = cmd.Option<string>("--syncmmdb", "Sync MaxMind GeoLite2 DB", CommandOptionType.NoValue);
-            
+            var noecsOption = cmd.Option("--noecs", "Set force disable active EDNS Client Subnet", CommandOptionType.NoValue);
+            //var letsencryptOption = cmd.Option<string>("-let|--letsencrypt <ApplyString>", "Apply LetsEncrypt <domain.name>:<you@your.email>",
+            //    CommandOptionType.SingleValue);
+
             var ipipOption = cmd.Option("--ipip", string.Empty, CommandOptionType.NoValue);
             var lschOption = cmd.Option("--lsch", string.Empty, CommandOptionType.NoValue);
             ipipOption.ShowInHelpText = false;
             lschOption.ShowInHelpText = false;
             chinaListOption.ShowInHelpText = false;
-            letsencryptOption.ShowInHelpText = false;
+            //letsencryptOption.ShowInHelpText = false;
 
             cmd.OnExecute(() =>
             {
@@ -61,6 +62,7 @@ namespace Arashi.Aoi
                 Config.ChinaListEnable = chinaListOption.HasValue();
                 Config.LogEnable = logOption.HasValue();
                 Config.OnlyTcpEnable = tcpOption.HasValue();
+                Config.EcsEnable = !noecsOption.HasValue();
                 Config.UseCacheRoute = lschOption.HasValue();
                 Config.UseIpRoute = ipipOption.HasValue();
                 if (logOption.HasValue() && !string.IsNullOrWhiteSpace(logOption.Value()))
@@ -116,14 +118,14 @@ namespace Arashi.Aoi
                     .ConfigureServices(services =>
                     {
                         services.AddRouting();
-                        if (httpsOption.HasValue() && letsencryptOption.HasValue())
-                            services.AddLettuceEncrypt(configure =>
-                            {
-                                var letStrings = letsencryptOption.Value().Split(':');
-                                configure.AcceptTermsOfService = true;
-                                configure.DomainNames = new[] {letStrings[0]};
-                                configure.EmailAddress = letStrings[1];
-                            }).PersistDataToDirectory(new DirectoryInfo("/LettuceEncrypt"), null);
+                        //if (httpsOption.HasValue() && letsencryptOption.HasValue())
+                        //    services.AddLettuceEncrypt(configure =>
+                        //    {
+                        //        var letStrings = letsencryptOption.Value().Split(':');
+                        //        configure.AcceptTermsOfService = true;
+                        //        configure.DomainNames = new[] {letStrings[0]};
+                        //        configure.EmailAddress = letStrings[1];
+                        //    }).PersistDataToDirectory(new DirectoryInfo("/LettuceEncrypt"), null);
                     })
                     .ConfigureKestrel(options =>
                     {
