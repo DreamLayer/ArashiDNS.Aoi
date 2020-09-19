@@ -34,10 +34,12 @@
 | `-l` / `--listen`      | 设置服务器监听地址和端口                     | 127.0.0.1:2020                |
 | `-u` / `--upstream`    | 设置上游查询源 DNS 服务器 IP 地址            | 8.8.8.8                       |
 | `-t` / `--timeout`     | 设置向上游查询的超时时间（毫秒）             | 500                           |
+| `-r` / `--retries`     | 设置向上游查询的重试次数                     | 5                            |
 | `-p` / `--perfix`      | 设置 DNS over HTTPS 的查询路径前缀           | "/dns-query"                  |
 | `-c` / `--cache`       | 本地缓存设置                                 | `full` / `flexible` / `none`  |
 | `--log`                | 控制台日志输出设置                           | `full` / `dns-query` / `none` |
 | `--tcp`                | 启用向上游仅TCP查询                          |                               |
+| `--noecs`              | 强制停用主动EDNS Client Subnet               |                               |
 | `-s` / `--https`       | 启用 HTTPS（默认使用自签名证书，**不推荐**） |                               |
 | `-pfx` / `--pfxfile`   | 设置你的 .pfx 证书文件路径（可选传入密码） |"./cert.pfx *@passw0rd* "        |
 | `--chinalist` | 使用 DNSPod D+ 分流，需要目录中包含 `china_whitelist.list` |                          |
@@ -82,12 +84,20 @@ EDNS-Client-Subnet 已默认启用，但是您的上游源 DNS 服务器也需�
 - 如果有 Bug 或者希望新增功能，请在 issues 中提出。
 - 如果你添加了新的功能或者修正了问题，也请向我提交 PR，非常感谢。
 
+## 致谢
+
+<img src='https://i.loli.net/2020/08/03/LWNj2BM6mxuYtRU.png' width="10%" height="10%" align="right"/>
+
+> 我一直在使用 ReSharper，它真的可以说是令人惊叹的工具，使我的开发效率提升了数倍。
+
+感谢 [JetBrains](https://www.jetbrains.com/?from=AuroraDNS) 为本项目提供了 [ReSharper](https://www.jetbrains.com/ReSharper/) 开源许可证授权。
+
 ## Credits 
 
 如果没有开源软件与社区，就不会有 ArashiDNS.Aoi 的诞生。感谢那些支持开源的人们。
 
-请查阅 Credits ，其中包含了我们的协作者与使用到的其他开源软件。
+请查阅 [Credits](https://github.com/mili-tan/ArashiDNS.Aoi/blob/master/CREDITS.md) ，其中包含了我们的协作者与使用到的其他开源软件。
 
 ## License
 
-Copyright (c) 2020 Milkey Tan. Code released under the [Mozilla Public License 2.0](https://github.com/mili-tan/ArashiDNS.Aoi/blob/master/LICENSE.md). 
+Copyright (c) 2020 Milkey Tan. Code released under the [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/). 

@@ -3,12 +3,13 @@ using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using Arashi.Azure;
-
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using static Arashi.AoiConfig;
 
 namespace Arashi.Aoi
 {
@@ -17,13 +18,22 @@ namespace Arashi.Aoi
         static void Main(string[] args)
         {
             var cmd = new CommandLineApplication
-                {Name = "Arashi.Aoi", Description = "ArashiDNS.Aoi - Simple Lightweight DNS over HTTPS Server"};
+            {
+                Name = "Arashi.Aoi",
+                Description = "ArashiDNS.Aoi - Lightweight DNS over HTTPS Server" +
+                              Environment.NewLine +
+                              $"Copyright (c) {DateTime.Now.Year} Milkey Tan. Code released under the Mozilla Public License 2.0" +
+                              Environment.NewLine +
+                              "https://github.com/mili-tan/ArashiDNS.Aoi/blob/master/CREDITS.md"
+            };
             cmd.HelpOption("-?|-h|--help");
-            var ipOption = cmd.Option<string>("-l|--listen <IPEndPoint>", "Set the server listening address and port <127.0.0.1:2020>",
+            var ipOption = cmd.Option<string>("-l|--listen <IPEndPoint>", "Set server listening address and port <127.0.0.1:2020>",
                 CommandOptionType.SingleValue);
-            var upOption = cmd.Option<string>("-u|--upstream <IPAddress>", "Set the upstream origin DNS server IP address <8.8.8.8>",
+            var upOption = cmd.Option<string>("-u|--upstream <IPAddress>", "Set upstream origin DNS server IP address <8.8.8.8>",
                 CommandOptionType.SingleValue);
-            var timeoutOption = cmd.Option<int>("-t|--timeout <Timeout(ms)>", "Set timeout for query to the upstream DNS server <500>",
+            var timeoutOption = cmd.Option<int>("-t|--timeout <Timeout(ms)>", "Set timeout for query to upstream DNS server <500>",
+                CommandOptionType.SingleValue);
+            var retriesOption = cmd.Option<int>("-r|--retries <Int>", "Set number of retries for query to upstream DNS server <5>",
                 CommandOptionType.SingleValue);
             var perfixOption = cmd.Option<string>("-p|--perfix <PerfixString>", "Set your DNS over HTTPS server query prefix </dns-query>",
                 CommandOptionType.SingleValue);
@@ -37,33 +47,40 @@ namespace Arashi.Aoi
                 CommandOptionType.SingleValue);
             var syncmmdbOption = cmd.Option<string>("--syncmmdb", "Sync MaxMind GeoLite2 DB", CommandOptionType.NoValue);
             var noecsOption = cmd.Option("--noecs", "Set force disable active EDNS Client Subnet", CommandOptionType.NoValue);
-            //var letsencryptOption = cmd.Option<string>("-let|--letsencrypt <ApplyString>", "Apply LetsEncrypt <domain.name>:<you@your.email>",
-            //    CommandOptionType.SingleValue);
+            var showOption = cmd.Option("--show", "Show current active configuration", CommandOptionType.NoValue);
+            var saveOption = cmd.Option("--save", "Save active configuration to config.json file", CommandOptionType.NoValue);
+            var loadOption = cmd.Option<string>("--load:<FilePath>", "Load existing configuration from config.json file [./config.json]",
+                CommandOptionType.SingleOrNoValue);
 
             var ipipOption = cmd.Option("--ipip", string.Empty, CommandOptionType.NoValue);
-            var lschOption = cmd.Option("--lsch", string.Empty, CommandOptionType.NoValue);
+            var adminOption = cmd.Option("--admin", string.Empty, CommandOptionType.NoValue);
             ipipOption.ShowInHelpText = false;
-            lschOption.ShowInHelpText = false;
+            adminOption.ShowInHelpText = false;
             chinaListOption.ShowInHelpText = false;
-            //letsencryptOption.ShowInHelpText = false;
 
             cmd.OnExecute(() =>
             {
+                if (loadOption.HasValue())
+                    Config = JsonConvert.DeserializeObject<AoiConfig>(
+                        string.IsNullOrWhiteSpace(loadOption.Value())
+                            ? File.ReadAllText("config.json")
+                            : File.ReadAllText(loadOption.Value()));
                 Console.WriteLine(cmd.Description);
                 var ipEndPoint = ipOption.HasValue()
                     ? IPEndPoint.Parse(ipOption.Value())
                     : httpsOption.HasValue()
                         ? new IPEndPoint(IPAddress.Loopback, 443)
                         : new IPEndPoint(IPAddress.Loopback, 2020);
-                if (upOption.HasValue()) Config.UpStream = IPAddress.Parse(upOption.Value());
+                if (upOption.HasValue()) Config.UpStream = upOption.Value();
                 if (timeoutOption.HasValue()) Config.TimeOut = timeoutOption.ParsedValue;
+                if (retriesOption.HasValue()) Config.Retries = retriesOption.ParsedValue;
                 if (perfixOption.HasValue()) Config.QueryPerfix = "/" + perfixOption.Value().Trim('/').Trim('\\');
                 Config.CacheEnable = cacheOption.HasValue();
                 Config.ChinaListEnable = chinaListOption.HasValue();
                 Config.LogEnable = logOption.HasValue();
                 Config.OnlyTcpEnable = tcpOption.HasValue();
                 Config.EcsEnable = !noecsOption.HasValue();
-                Config.UseCacheRoute = lschOption.HasValue();
+                Config.UseAdminRoute = adminOption.HasValue();
                 Config.UseIpRoute = ipipOption.HasValue();
                 if (logOption.HasValue() && !string.IsNullOrWhiteSpace(logOption.Value()))
                 {
@@ -77,7 +94,7 @@ namespace Arashi.Aoi
                     if (val == "full") Config.GeoCacheEnable = false;
                     if (val == "none" || val == "null" || val == "off") Config.CacheEnable = false;
                 }
-                if ((Config.CacheEnable && Config.GeoCacheEnable) || syncmmdbOption.HasValue())
+                if (Config.CacheEnable && Config.GeoCacheEnable || syncmmdbOption.HasValue())
                 {
                     var SetupBasePath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
                     Console.WriteLine("This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com");
@@ -108,6 +125,9 @@ namespace Arashi.Aoi
                         });
                 }
 
+                if (Config.UseAdminRoute) Console.WriteLine(
+                    $"Access Get AdminToken : /dns-admin/set-token?t={Config.AdminToken}");
+
                 var host = new WebHostBuilder()
                     .UseKestrel()
                     .UseContentRoot(AppDomain.CurrentDomain.SetupInformation.ApplicationBase)
@@ -115,18 +135,7 @@ namespace Arashi.Aoi
                     {
                         if (Config.LogEnable && Config.FullLogEnable) configureLogging.AddConsole();
                     })
-                    .ConfigureServices(services =>
-                    {
-                        services.AddRouting();
-                        //if (httpsOption.HasValue() && letsencryptOption.HasValue())
-                        //    services.AddLettuceEncrypt(configure =>
-                        //    {
-                        //        var letStrings = letsencryptOption.Value().Split(':');
-                        //        configure.AcceptTermsOfService = true;
-                        //        configure.DomainNames = new[] {letStrings[0]};
-                        //        configure.EmailAddress = letStrings[1];
-                        //    }).PersistDataToDirectory(new DirectoryInfo("/LettuceEncrypt"), null);
-                    })
+                    .ConfigureServices(services => services.AddRouting())
                     .ConfigureKestrel(options =>
                     {
                         options.Limits.MaxRequestBodySize = 1024;
@@ -139,7 +148,7 @@ namespace Arashi.Aoi
                             {
                                 var pfxStrings = pfxOption.Value().Split('@');
                                 if (pfxStrings.Length > 1)
-                                    listenOptions.UseHttps(pfxStrings[0], pfxStrings[1]);
+                                    listenOptions.UseHttps(pfxStrings[0].Trim(), pfxStrings[1].Trim());
                                 else listenOptions.UseHttps(pfxOption.Value());
                             }
                         });
@@ -147,6 +156,9 @@ namespace Arashi.Aoi
                     .UseStartup<Startup>()
                     .Build();
 
+                if (saveOption.HasValue())
+                    File.WriteAllText("config.json", JsonConvert.SerializeObject(Config, Formatting.Indented));
+                if (showOption.HasValue()) Console.WriteLine(JsonConvert.SerializeObject(Config, Formatting.Indented));
                 host.Run();
             });
 

@@ -34,10 +34,12 @@ It's that easy. Use `--help` / `-?` to discover more parameters and get help inf
 | `-l` / `--listen`      | Set the server listening address and port                    | 127.0.0.1:2020                |
 | `-u` / `--upstream`    | Set the upstream origin DNS server IP address                | 8.8.8.8                       |
 | `-t` / `--timeout`     | Set timeout for query to the upstream DNS server (ms)        | 500                           |
+| `-r` / `--retries`     | Set number of retries for query to upstream DNS server       | 5                             |
 | `-p` / `--perfix`      | Set your DNS over HTTPS server query prefix                  | "/dns-query"                  |
 | `-c` / `--cache`       | Local query cache settings                                   | `full` / `flexible` / `none`  |
 | `--log`                | Console log output settings                                  | `full` / `dns-query` / `none` |
 | `--tcp`                | Set enable upstream DNS query using TCP only                 |                               |
+| `--noecs`              | Set force disable active EDNS Client Subnet                  |                               |
 | `-s` / `--https`       | Set enable HTTPS (Self-Signed Certificate by default, **Not Recommended**) |                 |
 | `-pfx` / `--pfxfile`   | Set your .pfx certificate file path (with optional password) |"./cert.pfx *@passw0rd* "      |
 
@@ -82,12 +84,20 @@ If you wish to disable it, please enter EDNS-Client-Subnet IP `0.0.0.0` in your 
 - If you have added new feature or fixed bugs, please submit a PR to me as well, thank you very much.
 - I'm not a native English speaker, so forgive my typo and grammatical errors. If possible, please talk with me in Chinese.
 
+## Acknowledgements
+
+<img src='https://i.loli.net/2020/08/03/LWNj2BM6mxuYtRU.png' width="10%" height="10%" align="right"/>
+
+> ReSharper is really amazing tool that made my development several times more efficient.
+
+Thanks to [JetBrains](https://www.jetbrains.com/?from=AuroraDNS) for providing the [ReSharper](https://www.jetbrains.com/ReSharper/?from=AuroraDNS) open source license for this project.
+
 ## Credits 
 
 ArashiDNS was born of open source softwares and the people who support it.
 
-Check out Credits for a list of our collaborators and other open source softwares used.
+Check out [Credits](https://github.com/mili-tan/ArashiDNS.Aoi/blob/master/CREDITS.md) for a list of our collaborators and other open source softwares used.
 
 ## License
 
-Copyright (c) 2020 Milkey Tan. Code released under the [Mozilla Public License 2.0](https://github.com/mili-tan/ArashiDNS.Aoi/blob/master/LICENSE.md). 
+Copyright (c) 2020 Milkey Tan. Code released under the [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/). 
