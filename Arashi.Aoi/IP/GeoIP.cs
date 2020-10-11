@@ -52,17 +52,18 @@ namespace Arashi
         {
             try
             {
-                if (!IPAddress.TryParse(ipAddress, out var ip) || IPAddress.IsLoopback(ip)) return string.Empty;
-                var i = GetAsnCityValueTuple(ipAddress);
-                var cnisp = GetCnISP(i.Item1, i.Item2);
-                if (!string.IsNullOrEmpty(cnisp))
-                    return $"{i.Item2.Country.IsoCode}:{i.Item2.MostSpecificSubdivision.IsoCode}:{cnisp}:";
-                if (!string.IsNullOrWhiteSpace(i.Item2.MostSpecificSubdivision.IsoCode)
-                    && i.Item2.Country.IsoCode != "HK" && i.Item2.Country.IsoCode != "SG")
-                    return $"{i.Item2.Country.IsoCode}:{i.Item2.MostSpecificSubdivision.IsoCode}:" +
-                           $"{i.Item1.AutonomousSystemNumber}:";
+                if (!IPAddress.TryParse(ipAddress, out var ip) || IPAddress.IsLoopback(ip) || Equals(ip, IPAddress.Any))
+                    return string.Empty;
+                var (asnResponse, cityResponse) = GetAsnCityValueTuple(ipAddress);
+                var cnIsp = GetCnISP(asnResponse, cityResponse);
+                if (!string.IsNullOrEmpty(cnIsp))
+                    return $"{cityResponse.Country.IsoCode}:{cityResponse.MostSpecificSubdivision.IsoCode}:{cnIsp}:";
+                if (!string.IsNullOrWhiteSpace(cityResponse.MostSpecificSubdivision.IsoCode)
+                    && cityResponse.Country.IsoCode != "HK" && cityResponse.Country.IsoCode != "SG")
+                    return $"{cityResponse.Country.IsoCode}:{cityResponse.MostSpecificSubdivision.IsoCode}:" +
+                           $"{asnResponse.AutonomousSystemNumber}:";
 
-                return $"{i.Item2.Country.IsoCode}:{i.Item1.AutonomousSystemNumber}:";
+                return $"{cityResponse.Country.IsoCode}:{asnResponse.AutonomousSystemNumber}:";
             }
             catch (Exception e)
             {

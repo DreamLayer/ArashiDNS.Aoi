@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Buffers;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using Arashi.Azure;
 using Arashi.Kestrel;
-using Arashi.Kestrel.DNS;
 using ARSoft.Tools.Net.Dns;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -23,9 +23,10 @@ namespace Arashi.Aoi.Routes
             endpoints.Map(Config.QueryPerfix, async context =>
             {
                 var queryDictionary = context.Request.Query;
-                if (context.Request.Method == "POST" && context.Request.ContentType.Contains("dns-message") &&
-                    context.Request.BodyReader.TryRead(out var readResult))
-                    await ReturnContext(context, true, DnsQuery(DnsMessage.Parse(readResult.Buffer.ToArray()), context));
+                if (context.Request.Method == "POST")
+                    await ReturnContext(context, true,
+                        DnsQuery(DnsMessage.Parse((await context.Request.BodyReader.ReadAsync()).Buffer.ToArray()),
+                            context));
                 else if (queryDictionary.ContainsKey("dns"))
                     await ReturnContext(context, true, DnsQuery(DNSGet.FromWebBase64(context), context));
                 else if (queryDictionary.ContainsKey("name"))
@@ -38,32 +39,55 @@ namespace Arashi.Aoi.Routes
         public static async Task ReturnContext(HttpContext context, bool returnMsg, DnsMessage dnsMsg,
             bool cache = true)
         {
-            var queryDictionary = context.Request.Query;
-
-            if (dnsMsg == null)
+            try
             {
-                await context.WriteResponseAsync("Remote DNS server timeout", StatusCodes.Status500InternalServerError);
-                return;
-            }
+                var queryDictionary = context.Request.Query;
+                if (dnsMsg == null)
+                {
+                    await context.WriteResponseAsync("Remote DNS server timeout", StatusCodes.Status500InternalServerError);
+                    return;
+                }
 
-            if (returnMsg)
-            {
-                if (queryDictionary.ContainsKey("ct") && queryDictionary["ct"].ToString().Contains("json"))
-                    await context.WriteResponseAsync(DohJsonEncoder.Encode(dnsMsg).ToString(Formatting.None),
-                        type: "application/json", headers: Startup.HeaderDict);
+                if (returnMsg)
+                {
+                    if (queryDictionary.ContainsKey("ct") && queryDictionary["ct"].ToString().Contains("json"))
+                        await context.WriteResponseAsync(DnsJsonEncoder.Encode(dnsMsg).ToString(Formatting.None),
+                            type: "application/json", headers: Startup.HeaderDict);
+                    else
+                        await context.WriteResponseAsync(await DnsMsgToBytes(dnsMsg), type: "application/dns-message");
+                }
                 else
-                    await context.WriteResponseAsync(DnsEncoder.Encode(dnsMsg), type: "application/dns-message");
-            }
-            else
-            {
-                if (queryDictionary.ContainsKey("ct") && queryDictionary["ct"].ToString().Contains("message"))
-                    await context.WriteResponseAsync(DnsEncoder.Encode(dnsMsg), type: "application/dns-message");
-                else
-                    await context.WriteResponseAsync(DohJsonEncoder.Encode(dnsMsg).ToString(Formatting.None),
-                        type: "application/json", headers: Startup.HeaderDict);
-            }
+                {
+                    if (queryDictionary.ContainsKey("ct") && queryDictionary["ct"].ToString().Contains("message"))
+                        await context.WriteResponseAsync(await DnsMsgToBytes(dnsMsg), type: "application/dns-message");
+                    else
+                        await context.WriteResponseAsync(DnsJsonEncoder.Encode(dnsMsg).ToString(Formatting.None),
+                            type: "application/json", headers: Startup.HeaderDict);
+                }
 
-            if (cache) WriteLogCache(dnsMsg, context);
+                if (cache) WriteLogCache(dnsMsg, context);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        }
+
+        public static async Task<byte[]> DnsMsgToBytes(DnsMessage dnsMsg)
+        {
+            try
+            {
+                await using var memoryStream = new MemoryStream();
+                DnsDatagram.ReadFromDnsMessage(dnsMsg).WriteToUdp(memoryStream);
+                return memoryStream.ToArray();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                await using var memoryStream = new MemoryStream();
+                DnsDatagram.ReadFromJson(DnsJsonEncoder.Encode(dnsMsg)).WriteToUdp(memoryStream);
+                return memoryStream.ToArray();
+            }
         }
 
         public static DnsMessage DnsQuery(DnsMessage dnsMessage, HttpContext context = null)
