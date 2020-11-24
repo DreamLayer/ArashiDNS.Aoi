@@ -46,6 +46,7 @@ namespace Arashi.Aoi
             var pfxOption = cmd.Option<string>("-pfx|--pfxfile <FilePath>", "Set your pfx certificate file path <./cert.pfx>[@<password>]",
                 CommandOptionType.SingleValue);
             var syncmmdbOption = cmd.Option<string>("--syncmmdb", "Sync MaxMind GeoLite2 DB", CommandOptionType.NoValue);
+            var synccnlsOption = cmd.Option<string>("--synccnls", "Sync China White List", CommandOptionType.NoValue);
             var noecsOption = cmd.Option("--noecs", "Set force disable active EDNS Client Subnet", CommandOptionType.NoValue);
             var showOption = cmd.Option("--show", "Show current active configuration", CommandOptionType.NoValue);
             var saveOption = cmd.Option("--save", "Save active configuration to config.json file", CommandOptionType.NoValue);
@@ -57,6 +58,7 @@ namespace Arashi.Aoi
             ipipOption.ShowInHelpText = false;
             adminOption.ShowInHelpText = false;
             chinaListOption.ShowInHelpText = false;
+            synccnlsOption.ShowInHelpText = false;
 
             cmd.OnExecute(() =>
             {
@@ -71,6 +73,24 @@ namespace Arashi.Aoi
                     : httpsOption.HasValue()
                         ? new IPEndPoint(IPAddress.Loopback, 443)
                         : new IPEndPoint(IPAddress.Loopback, 2020);
+
+                if ((File.Exists("/.dockerenv") ||
+                     Environment.GetEnvironmentVariables().Contains("ARASHI_RUNNING_IN_CONTAINER") ||
+                     Environment.GetEnvironmentVariables().Contains("ARASHI_ANY")) &&
+                    !ipOption.HasValue()) ipEndPoint.Address = IPAddress.Any;
+
+                if (Environment.GetEnvironmentVariables().Contains("PORT") && !ipOption.HasValue())
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PORT")))
+                            throw new Exception();
+                        ipEndPoint.Port = Convert.ToInt32(Environment.GetEnvironmentVariable("PORT"));
+                    }
+                    catch (Exception)
+                    {
+                        Console.WriteLine("Failed to get $PORT Environment Variable");
+                    }
+
                 if (upOption.HasValue()) Config.UpStream = upOption.Value();
                 if (timeoutOption.HasValue()) Config.TimeOut = timeoutOption.ParsedValue;
                 if (retriesOption.HasValue()) Config.Retries = retriesOption.ParsedValue;
@@ -109,7 +129,7 @@ namespace Arashi.Aoi
                             Console.WriteLine("Downloading GeoLite2-ASN.mmdb...");
                             new WebClient().DownloadFile(
                                 "https://gh.mili.one/" +
-                                "https:/github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-ASN.mmdb",
+                                "github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-ASN.mmdb",
                                 setupBasePath + "GeoLite2-ASN.mmdb");
                             Console.WriteLine("GeoLite2-ASN.mmdb Download Done");
                         });
@@ -119,10 +139,22 @@ namespace Arashi.Aoi
                             Console.WriteLine("Downloading GeoLite2-City.mmdb...");
                             new WebClient().DownloadFile(
                                 "https://gh.mili.one/" +
-                                "https:/github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-City.mmdb",
+                                "github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-City.mmdb",
                                 setupBasePath + "GeoLite2-City.mmdb");
                             Console.WriteLine("GeoLite2-City.mmdb Download Done");
                         });
+                }
+
+                if (synccnlsOption.HasValue())
+                {
+                    Task.Run(() =>
+                    {
+                        Console.WriteLine("Downloading China_WhiteList.List...");
+                        new WebClient().DownloadFile(
+                            "https://mili.one/china_whitelist.txt",
+                            AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "china_whitelist.list");
+                        Console.WriteLine("China_WhiteList.List Download Done");
+                    });
                 }
 
                 if (Config.UseAdminRoute) Console.WriteLine(
@@ -162,7 +194,25 @@ namespace Arashi.Aoi
                 host.Run();
             });
 
-            cmd.Execute(args);
+            try
+            {
+                if (File.Exists("/.dockerenv") ||
+                    Environment.GetEnvironmentVariables().Contains("ARASHI_RUNNING_IN_CONTAINER"))
+                    Console.WriteLine("ArashiDNS Running in Docker Container");
+                if (Environment.GetEnvironmentVariables().Contains("ARASHI_VAR"))
+                {
+                    if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ARASHI_VAR")))
+                        throw new Exception();
+                    cmd.Execute(Environment.GetEnvironmentVariable("ARASHI_VAR").Split(' '));
+                }
+                else
+                    cmd.Execute(args);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                cmd.Execute();
+            }
         }
     }
 }
