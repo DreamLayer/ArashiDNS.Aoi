@@ -1,6 +1,10 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using Arashi.Azure;
 using McMaster.Extensions.CommandLineUtils;
@@ -40,11 +44,17 @@ namespace Arashi.Aoi
 
             var cacheOption = cmd.Option("-c|--cache:<Type>", "Local query cache settings [full/flexible/none]", CommandOptionType.SingleOrNoValue);
             var logOption = cmd.Option("--log:<Type>", "Console log output settings [full/dns/none]", CommandOptionType.SingleOrNoValue);
-            var chinaListOption = cmd.Option("--chinalist", "Set enable ChinaList", CommandOptionType.NoValue);
+            var chinaListOption = cmd.Option("-cn|--chinalist", "Set enable ChinaList", CommandOptionType.NoValue);
             var tcpOption = cmd.Option("--tcp", "Set enable upstream DNS query using TCP only", CommandOptionType.NoValue);
             var httpsOption = cmd.Option("-s|--https", "Set enable HTTPS", CommandOptionType.NoValue);
-            var pfxOption = cmd.Option<string>("-pfx|--pfxfile <FilePath>", "Set your pfx certificate file path <./cert.pfx>[@<password>]",
-                CommandOptionType.SingleValue);
+            var pfxOption = cmd.Option<string>("-pfx|--pfxfile <FilePath>", "Set your pfx certificate file path <./cert.pfx>",
+                CommandOptionType.SingleOrNoValue);
+            var pfxPassOption = cmd.Option<string>("-pass|--pfxpass <Password>", "Set your pfx certificate password <password>",
+                CommandOptionType.SingleOrNoValue);
+            var pemOption = cmd.Option<string>("-pem|--pemfile <FilePath>", "Set your pem certificate file path <./cert.pem>",
+                CommandOptionType.SingleOrNoValue);
+            var keyOption = cmd.Option<string>("-key|--keyfile <FilePath>", "Set your key certificate password <./cert.key>",
+                CommandOptionType.SingleOrNoValue);
             var syncmmdbOption = cmd.Option<string>("--syncmmdb", "Sync MaxMind GeoLite2 DB", CommandOptionType.NoValue);
             var synccnlsOption = cmd.Option<string>("--synccnls", "Sync China White List", CommandOptionType.NoValue);
             var noecsOption = cmd.Option("--noecs", "Set force disable active EDNS Client Subnet", CommandOptionType.NoValue);
@@ -59,6 +69,12 @@ namespace Arashi.Aoi
             adminOption.ShowInHelpText = false;
             chinaListOption.ShowInHelpText = false;
             synccnlsOption.ShowInHelpText = false;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                pemOption.ShowInHelpText = false;
+                keyOption.ShowInHelpText = false;
+            }
 
             cmd.OnExecute(() =>
             {
@@ -91,6 +107,7 @@ namespace Arashi.Aoi
                         Console.WriteLine("Failed to get $PORT Environment Variable");
                     }
 
+                if (PortIsUse(53)) Config.UpStream = IPAddress.Loopback.ToString();
                 if (upOption.HasValue()) Config.UpStream = upOption.Value();
                 if (timeoutOption.HasValue()) Config.TimeOut = timeoutOption.ParsedValue;
                 if (retriesOption.HasValue()) Config.Retries = retriesOption.ParsedValue;
@@ -175,14 +192,14 @@ namespace Arashi.Aoi
                         {
                             listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
                             if (!httpsOption.HasValue()) return;
-                            if (!pfxOption.HasValue()) listenOptions.UseHttps();
-                            else
-                            {
-                                var pfxStrings = pfxOption.Value().Split('@');
-                                if (pfxStrings.Length > 1)
-                                    listenOptions.UseHttps(pfxStrings[0].Trim(), pfxStrings[1].Trim());
+                            if (!pfxOption.HasValue() && !pemOption.HasValue()) listenOptions.UseHttps();
+                            if (pfxOption.HasValue())
+                                if (pfxPassOption.HasValue())
+                                    listenOptions.UseHttps(pfxOption.Value(), pfxPassOption.Value());
                                 else listenOptions.UseHttps(pfxOption.Value());
-                            }
+                            if (pemOption.HasValue() && keyOption.HasValue())
+                                listenOptions.UseHttps(X509Certificate2.CreateFromPem(
+                                    File.ReadAllText(pemOption.Value()), File.ReadAllText(keyOption.Value())));
                         });
                     })
                     .UseStartup<Startup>()
@@ -213,6 +230,15 @@ namespace Arashi.Aoi
                 Console.WriteLine(e);
                 cmd.Execute();
             }
+        }
+
+        public static bool PortIsUse(int port)
+        {
+            IPEndPoint[] ipEndPointsTcp = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
+            IPEndPoint[] ipEndPointsUdp = IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners();
+
+            return ipEndPointsTcp.Any(endPoint => endPoint.Port == port)
+                   || ipEndPointsUdp.Any(endPoint => endPoint.Port == port);
         }
     }
 }

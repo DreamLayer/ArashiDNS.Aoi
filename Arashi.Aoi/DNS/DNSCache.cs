@@ -16,7 +16,12 @@ namespace Arashi
             if (dnsMessage.AnswerRecords.Count <= 0) return;
             var dnsRecordBase = dnsMessage.AnswerRecords.FirstOrDefault();
             Add(new CacheItem($"DNS:{dnsRecordBase.Name}:{dnsRecordBase.RecordType}",
-                dnsMessage.AnswerRecords.ToList()), dnsRecordBase.TimeToLive);
+                    new CacheEntity
+                    {
+                        List = dnsMessage.AnswerRecords.ToList(),
+                        Time = DateTime.Now, ExpiresTime = DateTime.Now.AddSeconds(dnsRecordBase.TimeToLive)
+                    }),
+                dnsRecordBase.TimeToLive);
         }
 
         public static void Add(DnsMessage dnsMessage, HttpContext context)
@@ -25,11 +30,23 @@ namespace Arashi
             var dnsRecordBase = dnsMessage.AnswerRecords.FirstOrDefault();
             if (RealIP.TryGetFromDns(dnsMessage, out var ipAddress))
                 Add(new CacheItem(
-                    $"DNS:{GeoIP.GetGeoStr(ipAddress)}{dnsRecordBase.Name}:{dnsRecordBase.RecordType}",
-                    dnsMessage.AnswerRecords.ToList()), dnsRecordBase.TimeToLive);
+                        $"DNS:{GeoIP.GetGeoStr(ipAddress)}{dnsRecordBase.Name}:{dnsRecordBase.RecordType}",
+                        new CacheEntity
+                        {
+                            List = dnsMessage.AnswerRecords.ToList(),
+                            Time = DateTime.Now,
+                            ExpiresTime = DateTime.Now.AddSeconds(dnsRecordBase.TimeToLive)
+                        }),
+                    dnsRecordBase.TimeToLive);
             else
                 Add(new CacheItem($"DNS:{dnsRecordBase.Name}:{dnsRecordBase.RecordType}",
-                    dnsMessage.AnswerRecords.ToList()), dnsRecordBase.TimeToLive);
+                        new CacheEntity
+                        {
+                            List = dnsMessage.AnswerRecords.ToList(),
+                            Time = DateTime.Now,
+                            ExpiresTime = DateTime.Now.AddSeconds(dnsRecordBase.TimeToLive)
+                        }),
+                    dnsRecordBase.TimeToLive);
         }
 
         public static void Add(CacheItem cacheItem, int ttl)
@@ -60,22 +77,49 @@ namespace Arashi
                 IsRecursionDesired = true,
                 TransactionID = dnsQMessage.TransactionID
             };
-            if (context != null)
-                dCacheMsg.AnswerRecords.AddRange(Get(
-                    $"DNS:{GeoIP.GetGeoStr(RealIP.GetFromDns(dnsQMessage, context))}{dnsQMessage.Questions.FirstOrDefault().Name}:{dnsQMessage.Questions.FirstOrDefault().RecordType}"));
-            else
-                dCacheMsg.AnswerRecords.AddRange(Get(
-                    $"DNS:{dnsQMessage.Questions.FirstOrDefault().Name}:{dnsQMessage.Questions.FirstOrDefault().RecordType}"));
+            var getName = context != null
+                ? $"DNS:{GeoIP.GetGeoStr(RealIP.GetFromDns(dnsQMessage, context))}{dnsQMessage.Questions.FirstOrDefault().Name}:{dnsQMessage.Questions.FirstOrDefault().RecordType}"
+                : $"DNS:{dnsQMessage.Questions.FirstOrDefault().Name}:{dnsQMessage.Questions.FirstOrDefault().RecordType}";
+            var cacheEntity = Get(getName);
+            //var ttl = Convert.ToInt32((cacheEntity.ExpiredTime - DateTime.Now).TotalSeconds);
+            foreach (var item in cacheEntity.List)
+            {
+                if (item is ARecord aRecord)
+                    dCacheMsg.AnswerRecords.Add(new ARecord(aRecord.Name,
+                        Convert.ToInt32((cacheEntity.Time.AddSeconds(item.TimeToLive) - DateTime.Now)
+                            .TotalSeconds), aRecord.Address));
+                else if (item is AaaaRecord aaaaRecord)
+                    dCacheMsg.AnswerRecords.Add(new AaaaRecord(aaaaRecord.Name,
+                        Convert.ToInt32((cacheEntity.Time.AddSeconds(item.TimeToLive) - DateTime.Now)
+                            .TotalSeconds), aaaaRecord.Address));
+                else if (item is CNameRecord cNameRecord)
+                    dCacheMsg.AnswerRecords.Add(new CNameRecord(cNameRecord.Name,
+                        Convert.ToInt32((cacheEntity.Time.AddSeconds(item.TimeToLive) - DateTime.Now)
+                            .TotalSeconds), cNameRecord.CanonicalName));
+                else
+                    dCacheMsg.AnswerRecords.Add(item);
+            }
+
             dCacheMsg.Questions.AddRange(dnsQMessage.Questions);
+            //dCacheMsg.AnswerRecords.AddRange(cacheEntity.List);
+            //dCacheMsg.AnswerRecords.Add(new TxtRecord(DomainName.Parse("cache.arashi-msg"), 0,
+            //    "ArashiDNS.P Cached"));
             dCacheMsg.AnswerRecords.Add(new TxtRecord(DomainName.Parse("cache.arashi-msg"), 0,
-                "ArashiDNS.P Cached"));
+                cacheEntity.ExpiresTime.ToString("r")));
             return dCacheMsg;
         }
 
-        public static List<DnsRecordBase> Get(string key)
+        public static CacheEntity Get(string key)
         {
-            return (List<DnsRecordBase>) MemoryCache.Default.Get(key) ??
+            return (CacheEntity) MemoryCache.Default.Get(key) ??
                    throw new InvalidOperationException();
+        }
+
+        public class CacheEntity
+        {
+            public List<DnsRecordBase> List;
+            public DateTime Time;
+            public DateTime ExpiresTime;
         }
     }
 }
