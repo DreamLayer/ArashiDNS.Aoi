@@ -47,6 +47,18 @@ namespace Arashi
                             ExpiresTime = DateTime.Now.AddSeconds(dnsRecordBase.TimeToLive)
                         }),
                     dnsRecordBase.TimeToLive);
+            //try
+            //{
+            //    Add(new CacheItem(
+            //            $"DNS:{GeoIP.GetGeoStr(RealIP.Get(context))}{dnsRecordBase.Name}:{dnsRecordBase.RecordType}",
+            //            new CacheEntity
+            //            {
+            //                List = dnsMessage.AnswerRecords.ToList(),
+            //                Time = DateTime.Now,
+            //                ExpiresTime = DateTime.Now.AddSeconds(dnsRecordBase.TimeToLive)
+            //            }),
+            //        dnsRecordBase.TimeToLive);
+            //}
         }
 
         public static void Add(CacheItem cacheItem, int ttl)

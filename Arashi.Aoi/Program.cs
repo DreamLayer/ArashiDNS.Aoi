@@ -6,6 +6,7 @@ using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using System.Timers;
 using Arashi.Azure;
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.AspNetCore.Hosting;
@@ -53,7 +54,7 @@ namespace Arashi.Aoi
                 CommandOptionType.SingleOrNoValue);
             var pemOption = cmd.Option<string>("-pem|--pemfile <FilePath>", "Set your pem certificate file path <./cert.pem>",
                 CommandOptionType.SingleOrNoValue);
-            var keyOption = cmd.Option<string>("-key|--keyfile <FilePath>", "Set your key certificate password <./cert.key>",
+            var keyOption = cmd.Option<string>("-key|--keyfile <FilePath>", "Set your pem certificate key file path <./cert.key>",
                 CommandOptionType.SingleOrNoValue);
             var syncmmdbOption = cmd.Option<string>("--syncmmdb", "Sync MaxMind GeoLite2 DB", CommandOptionType.NoValue);
             var synccnlsOption = cmd.Option<string>("--synccnls", "Sync China White List", CommandOptionType.NoValue);
@@ -62,6 +63,7 @@ namespace Arashi.Aoi
             var saveOption = cmd.Option("--save", "Save active configuration to config.json file", CommandOptionType.NoValue);
             var loadOption = cmd.Option<string>("--load:<FilePath>", "Load existing configuration from config.json file [./config.json]",
                 CommandOptionType.SingleOrNoValue);
+            var testOption = cmd.Option("-e|--test", "Exit after passing the test", CommandOptionType.NoValue);
 
             var ipipOption = cmd.Option("--ipip", string.Empty, CommandOptionType.NoValue);
             var adminOption = cmd.Option("--admin", string.Empty, CommandOptionType.NoValue);
@@ -131,48 +133,40 @@ namespace Arashi.Aoi
                     if (val == "full") Config.GeoCacheEnable = false;
                     if (val == "none" || val == "null" || val == "off") Config.CacheEnable = false;
                 }
+
                 if (Config.CacheEnable && Config.GeoCacheEnable || syncmmdbOption.HasValue())
                 {
                     var setupBasePath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
-                    Console.WriteLine("This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com");
+                    Console.WriteLine(
+                        "This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com");
                     if (syncmmdbOption.HasValue())
                     {
-                        if (File.Exists(setupBasePath+"GeoLite2-ASN.mmdb")) File.Delete(setupBasePath + "GeoLite2-ASN.mmdb");
+                        if (File.Exists(setupBasePath + "GeoLite2-ASN.mmdb")) File.Delete(setupBasePath + "GeoLite2-ASN.mmdb");
                         if (File.Exists(setupBasePath + "GeoLite2-City.mmdb")) File.Delete(setupBasePath + "GeoLite2-City.mmdb");
                     }
-                    if (!File.Exists(setupBasePath + "GeoLite2-ASN.mmdb"))
-                        Task.Run(() =>
-                        {
-                            Console.WriteLine("Downloading GeoLite2-ASN.mmdb...");
-                            new WebClient().DownloadFile(
-                                "https://gh.mili.one/" +
-                                "github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-ASN.mmdb",
-                                setupBasePath + "GeoLite2-ASN.mmdb");
-                            Console.WriteLine("GeoLite2-ASN.mmdb Download Done");
-                        });
-                    if (!File.Exists(setupBasePath + "GeoLite2-City.mmdb"))
-                        Task.Run(() =>
-                        {
-                            Console.WriteLine("Downloading GeoLite2-City.mmdb...");
-                            new WebClient().DownloadFile(
-                                "https://gh.mili.one/" +
-                                "github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-City.mmdb",
-                                setupBasePath + "GeoLite2-City.mmdb");
-                            Console.WriteLine("GeoLite2-City.mmdb Download Done");
-                        });
+
+                    var timer = new Timer(100) { Enabled = true, AutoReset = true };
+                    timer.Elapsed += (s, a) =>
+                    {
+                        timer.Interval = 3600000 * 24;
+                        GetFileUpdate("GeoLite2-ASN.mmdb", Config.MaxmindAsnDbUrl);
+                        GetFileUpdate("GeoLite2-City.mmdb", Config.MaxmindCityDbUrl);
+                    };
                 }
 
                 if (synccnlsOption.HasValue())
                 {
-                    Task.Run(() =>
+                    if (File.Exists(AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "China_WhiteList.List"))
+                        File.Delete(AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "China_WhiteList.List");
+                    var timer = new Timer(100) {Enabled = true, AutoReset = true};
+                    timer.Elapsed += (s, a) =>
                     {
-                        Console.WriteLine("Downloading China_WhiteList.List...");
-                        new WebClient().DownloadFile(
-                            "https://mili.one/china_whitelist.txt",
-                            AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "china_whitelist.list");
-                        Console.WriteLine("China_WhiteList.List Download Done");
-                    });
+                        timer.Interval = 3600000 * 24;
+                        GetFileUpdate("China_WhiteList.List", "https://mili.one/china_whitelist.txt");
+                    };
                 }
+                else if (File.Exists(AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "China_WhiteList.List"))
+                    GetFileUpdate("China_WhiteList.List", "https://mili.one/china_whitelist.txt");
 
                 if (Config.UseAdminRoute) Console.WriteLine(
                     $"Access Get AdminToken : /dns-admin/set-token?t={Config.AdminToken}");
@@ -204,7 +198,14 @@ namespace Arashi.Aoi
                     })
                     .UseStartup<Startup>()
                     .Build();
-
+                if (testOption.HasValue())
+                    Task.Run(() =>
+                    {
+                        for (int i = 0; i < 100; i++)
+                            if (PortIsUse(ipEndPoint.Port))
+                                host.StopAsync().Wait(5000);
+                        Environment.Exit(0);
+                    });
                 if (saveOption.HasValue())
                     File.WriteAllText("config.json", JsonConvert.SerializeObject(Config, Formatting.Indented));
                 if (showOption.HasValue()) Console.WriteLine(JsonConvert.SerializeObject(Config, Formatting.Indented));
@@ -239,6 +240,31 @@ namespace Arashi.Aoi
 
             return ipEndPointsTcp.Any(endPoint => endPoint.Port == port)
                    || ipEndPointsUdp.Any(endPoint => endPoint.Port == port);
+        }
+
+        public static void GetFileUpdate(string file, string url)
+        {
+            var setupBasePath = AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
+            if (File.Exists(setupBasePath + file))
+                Console.Write(file + " Last updated: " + new FileInfo(setupBasePath + file).LastWriteTimeUtc);
+            else Console.Write(file + " Not Exist or being Updating");
+            if (File.Exists(setupBasePath + file) &&
+                (DateTime.UtcNow - new FileInfo(setupBasePath + file).LastWriteTimeUtc)
+                .TotalDays > 7)
+            {
+                Console.WriteLine(
+                    $" : Expired {(DateTime.UtcNow - new FileInfo(setupBasePath + file).LastWriteTimeUtc).TotalDays:0} days");
+                File.Delete(setupBasePath + file);
+            }
+            else Console.WriteLine();
+
+            if (!File.Exists(setupBasePath + file))
+                Task.Run(() =>
+                {
+                    Console.WriteLine($"Downloading {file}...");
+                    new WebClient().DownloadFile(url, setupBasePath + file);
+                    Console.WriteLine(file + " Download Done");
+                });
         }
     }
 }

@@ -11,6 +11,7 @@ namespace Arashi
         public string IpPerfix = "/ip";
         public int Retries = 4;
         public int TimeOut = 500;
+        public byte EcsDefaultMask = 24;
         public bool CacheEnable = true;
         public bool LogEnable = false;
         public bool FullLogEnable = false;
@@ -22,5 +23,11 @@ namespace Arashi
         public bool GeoCacheEnable = true;
         public bool EcsEnable = true;
         public string AdminToken = Guid.NewGuid().ToString();
+
+        public string MaxmindCityDbUrl =
+            "https://gh.mili.one/github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-City.mmdb";
+
+        public string MaxmindAsnDbUrl =
+            "https://gh.mili.one/github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-ASN.mmdb";
     }
 }
