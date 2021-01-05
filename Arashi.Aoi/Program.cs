@@ -1,13 +1,16 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Arashi.Azure;
+using Arashi.Kestrel;
+using ARSoft.Tools.Net;
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -15,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using static Arashi.AoiConfig;
+using Timer = System.Timers.Timer;
 
 namespace Arashi.Aoi
 {
@@ -67,10 +71,12 @@ namespace Arashi.Aoi
 
             var ipipOption = cmd.Option("--ipip", string.Empty, CommandOptionType.NoValue);
             var adminOption = cmd.Option("--admin", string.Empty, CommandOptionType.NoValue);
+            var noUpdateOption = cmd.Option("-nu|--noupdate", string.Empty, CommandOptionType.NoValue);
             ipipOption.ShowInHelpText = false;
             adminOption.ShowInHelpText = false;
             chinaListOption.ShowInHelpText = false;
             synccnlsOption.ShowInHelpText = false;
+            noUpdateOption.ShowInHelpText = false;
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -145,13 +151,16 @@ namespace Arashi.Aoi
                         if (File.Exists(setupBasePath + "GeoLite2-City.mmdb")) File.Delete(setupBasePath + "GeoLite2-City.mmdb");
                     }
 
-                    var timer = new Timer(100) { Enabled = true, AutoReset = true };
-                    timer.Elapsed += (s, a) =>
+                    if (!noUpdateOption.HasValue())
                     {
-                        timer.Interval = 3600000 * 24;
-                        GetFileUpdate("GeoLite2-ASN.mmdb", Config.MaxmindAsnDbUrl);
-                        GetFileUpdate("GeoLite2-City.mmdb", Config.MaxmindCityDbUrl);
-                    };
+                        var timer = new Timer(100) { Enabled = true, AutoReset = true };
+                        timer.Elapsed += (_, _) =>
+                        {
+                            timer.Interval = 3600000 * 24;
+                            GetFileUpdate("GeoLite2-ASN.mmdb", Config.MaxmindAsnDbUrl);
+                            GetFileUpdate("GeoLite2-City.mmdb", Config.MaxmindCityDbUrl);
+                        };
+                    }
                 }
 
                 if (synccnlsOption.HasValue())
@@ -159,10 +168,23 @@ namespace Arashi.Aoi
                     if (File.Exists(AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "China_WhiteList.List"))
                         File.Delete(AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "China_WhiteList.List");
                     var timer = new Timer(100) {Enabled = true, AutoReset = true};
-                    timer.Elapsed += (s, a) =>
+                    timer.Elapsed += (_, _) =>
                     {
                         timer.Interval = 3600000 * 24;
                         GetFileUpdate("China_WhiteList.List", "https://mili.one/china_whitelist.txt");
+                        Task.Run(() =>
+                        {
+                            while (true)
+                            {
+                                if (File.Exists(DNSChinaConfig.Config.ChinaListPath))
+                                {
+                                    File.ReadAllLines(DNSChinaConfig.Config.ChinaListPath).ToList()
+                                        .ConvertAll(DomainName.Parse);
+                                    break;
+                                }
+                                Thread.Sleep(1000);
+                            }
+                        });
                     };
                 }
                 else if (File.Exists(AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "China_WhiteList.List"))
