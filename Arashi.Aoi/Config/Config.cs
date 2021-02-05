@@ -4,7 +4,7 @@ namespace Arashi
 {
     public class AoiConfig
     {
-        public static AoiConfig Config = new AoiConfig();
+        public static AoiConfig Config = new();
         public string UpStream = "8.8.8.8";
         public string QueryPerfix = "/dns-query";
         public string AdminPerfix = "/dns-admin";
@@ -13,6 +13,7 @@ namespace Arashi
         public int TimeOut = 500;
         public byte EcsDefaultMask = 24;
         public bool CacheEnable = true;
+        public bool RankEnable = true;
         public bool LogEnable = false;
         public bool FullLogEnable = false;
         public bool ChinaListEnable = true;
@@ -23,11 +24,7 @@ namespace Arashi
         public bool GeoCacheEnable = true;
         public bool EcsEnable = true;
         public string AdminToken = Guid.NewGuid().ToString();
-
-        public string MaxmindCityDbUrl =
-            "https://gh.mili.one/github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-City.mmdb";
-
-        public string MaxmindAsnDbUrl =
-            "https://gh.mili.one/github.com/mili-tan/maxmind-geoip/releases/latest/download/GeoLite2-ASN.mmdb";
+        public string MaxmindCityDbUrl = "https://t.mili.one/GeoLite2-City.mmdb";
+        public string MaxmindAsnDbUrl = "https://t.mili.one/GeoLite2-ASN.mmdb";
     }
 }

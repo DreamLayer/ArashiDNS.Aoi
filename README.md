@@ -22,6 +22,8 @@ Host your DNS over HTTPS Server just by running `./Arashi.Aoi --upstream 127.0.0
 
 If you get `Permission denied`, run `chmod +x ./Arashi.Aoi` to grant execution permission.
 
+OR using Docker. `docker run milkey/arashidns.aoi` 
+
 It is that easy. Use `--help` / `-?` to discover more parameters and get help information.
 
 ## Introduction
@@ -41,10 +43,24 @@ It is that easy. Use `--help` / `-?` to discover more parameters and get help in
 | `--tcp`                | Set enable upstream DNS query using TCP only                 |                               |
 | `--noecs`              | Set force disable active EDNS Client Subnet                  |                               |
 | `-s` / `--https`       | Set enable HTTPS (Self-Signed Certificate by default, **Not Recommended**) |                 |
-| `-pfx` / `--pfxfile`   | Set your pfx certificate file path (with optional password) |"./cert.pfx"      |
-| `-pass` / `--pfxpass`   | Set your pfx certificate password |"*passw0rd* "      |
-| `-pem` / `--pemfile`   | Set your pem certificate file path|"./cert.pem"      |
-| `-key` / `--keyfile`   | Set your pem certificate key file path|"./cert.key"      |
+| `-pfx` / `--pfxfile`   | Set your pfx certificate file path (with optional password)  |"./cert.pfx"                   |
+| `-pass` / `--pfxpass`  | Set your pfx certificate password                            |"*passw0rd* "                  |
+| `-pem` / `--pemfile`   | Set your pem certificate file path                           |"./cert.pem"                   |
+| `-key` / `--keyfile`   | Set your pem certificate key file path                       |"./cert.key"                   |
+
+### Environment Variables
+
+Usually you only need to set them when running in a container (such as Docker). 
+
+And generally only `ARASHI_VAR`  and `PORT` need to be set.
+
+| Variables                     | Explanation                                                  | Example                    |
+| ----------------------------- | ------------------------------------------------------------ | -------------------------- |
+| `PORT`                        | Set the server listening port                                | 2020                       |
+| `ARASHI_ANY`                  | Set the server listening any address                         | true                       |
+| `ARASHI_VAR`                  | Set start-up parameters (see above)                          | `-u 127.0.0.1 -r 3`        |
+| `ARASHI_RUNNING_IN_CONTAINER` | Manual setting is required only if the container is not identified | true                 |
+
 ### Run in Background
 
 ##### Windows

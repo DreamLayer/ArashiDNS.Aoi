@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Timers;
+using Arashi.Aoi.DNS;
 using Arashi.Aoi.Routes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -8,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using static Arashi.AoiConfig;
 
-namespace Arashi.Azure
+namespace Arashi
 {
     public class Startup
     {
@@ -25,6 +27,12 @@ namespace Arashi.Azure
             if (File.Exists(SetupBasePath + "headers.list"))
                 foreach (var s in File.ReadAllText(SetupBasePath + "headers.list").Split(Environment.NewLine))
                     HeaderDict.Add(s.Split(':')[0], s.Split(':')[1]);
+            
+            if (Config.RankEnable)
+            {
+                var timer = new Timer(600000) { Enabled = true, AutoReset = true };
+                timer.Elapsed += (_, _) => DNSRank.Database.Checkpoint();
+            }
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, ILoggerFactory loggerFactory)

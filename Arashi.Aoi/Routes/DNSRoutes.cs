@@ -4,8 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using Arashi.Aoi.DNS;
 using Arashi.Azure;
-using Arashi.Kestrel;
 using ARSoft.Tools.Net.Dns;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -135,6 +135,13 @@ namespace Arashi.Aoi.Routes
                 {
                     if (context != null && Config.GeoCacheEnable) DnsCache.Add(dnsMessage, context);
                     else DnsCache.Add(dnsMessage);
+                });
+
+            if (Config.RankEnable)
+                Task.Run(() =>
+                {
+                    DNSRank.AddUp(dnsMessage.AnswerRecords.FirstOrDefault().Name);
+                    if (context != null && Config.GeoCacheEnable) DNSRank.AddUpGeo(dnsMessage, context);
                 });
 
             if (Config.LogEnable)
