@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using ARSoft.Tools.Net;
@@ -21,6 +22,8 @@ namespace Arashi
 
         public static byte[] Encode(DnsMessage dnsMsg)
         {
+            if (info == null) Init();
+
             dnsMsg.IsRecursionAllowed = true;
             dnsMsg.IsRecursionDesired = true;
             dnsMsg.IsQuery = false;
@@ -28,17 +31,29 @@ namespace Arashi
             dnsMsg.IsEDnsEnabled = false;
             dnsMsg.AdditionalRecords.Clear();
 
-            foreach (var item in dnsMsg.AnswerRecords.Where(item =>
-                (item.Name.IsSubDomainOf(DomainName.Parse("arashi-msg")) ||
-                 item.Name.IsSubDomainOf(DomainName.Parse("nova-msg"))) && item.RecordType == RecordType.Txt))
+
+            foreach (var item in new List<DnsRecordBase>(dnsMsg.AnswerRecords).Where(item =>
+                item.Name.IsSubDomainOf(DomainName.Parse("arashi-msg")) ||
+                item.Name.IsSubDomainOf(DomainName.Parse("nova-msg"))))
                 dnsMsg.AnswerRecords.Remove(item);
 
-            if (info == null) Init();
+            //if (dnsBytes != null && dnsBytes[2] == 0) dnsBytes[2] = 1;
             var args = new object[] {false, null};
             if (info != null) info.Invoke(dnsMsg, args);
-            var dnsBytes = args[1] as byte[];
-            //if (dnsBytes != null && dnsBytes[2] == 0) dnsBytes[2] = 1;
-            return dnsBytes;
+            return bytesTrimEnd(args[1] as byte[]);
+        }
+
+        private static byte[] bytesTrimEnd(byte[] bytes)
+        {
+            var list = bytes.ToList();
+            for (var i = bytes.Length - 1; i >= 0; i--)
+            {
+                if (bytes[i] == 0x00)
+                    list.RemoveAt(i);
+                else
+                    break;
+            }
+            return list.ToArray();
         }
     }
 }
